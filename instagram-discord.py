@@ -21,9 +21,11 @@ import urllib.request
 import os
 import time
 import random
+from discord_webhook import DiscordWebhook, DiscordEmbed
 # to test env on my own pc, im using dotenv
-# from dotenv import load_dotenv
-# load_dotenv()
+import dotenv
+dotenv_file = dotenv.find_dotenv()
+dotenv.load_dotenv(dotenv_file, override=True)
 
 # USAGE:
 # Set Environment Variables:
@@ -85,7 +87,7 @@ def webhook(webhook_url, html):
     }
     data["embeds"] = []
     embed = {}
-    embed["color"] = 15467852
+    embed["color"] = 13500529
     embed["title"] = "New Post from @"+INSTAGRAM_USERNAME+""
     embed["url"] = "https://www.instagram.com/p/" + \
         get_last_publication_url(html)+"/"
@@ -102,6 +104,86 @@ def webhook(webhook_url, html):
         print("Image successfully posted in Discord, code {}.".format(
             result.status_code))
 
+def webhookRewrite(webhook_url, html):
+    webhook = DiscordWebhook(url=webhook_url, username=get_user_fullname(html), avatar_url=get_profile_picture(html))
+    number_of_embed = 0
+    Role_ID = os.environ.get("ROLE_ID", "no role_id in the .env")
+    nodes = html.json()["graphql"]["user"]["edge_owner_to_timeline_media"]["edges"]
+    for node in nodes: # check from bottom
+        if node["node"]["shortcode"] == os.environ["LAST_IMAGE_ID"]: # if looped until last image, check embed then post
+            break
+        embed = DiscordEmbed(title="New Post from @" + INSTAGRAM_USERNAME, 
+                            url="https://www.instagram.com/p/" + node["node"]["shortcode"] + "/", 
+                            color="CE0071")
+        embed.set_image(url=node["node"]["thumbnail_src"]) # uncomment to post bigger image
+        # embed.set_thumbnail(url=node["node"]["thumbnail_src"]) # uncomment to add smaller image
+        if node["node"]["edge_media_to_caption"]["edges"]:
+            desc = node["node"]["edge_media_to_caption"]["edges"][0]["node"]["text"]
+            if 'bit.ly/' in desc:
+                desc = desc.replace('bit.ly/', ' https://bit.ly/')
+            if 's.id/' in desc:
+                desc = desc.replace('s.id/', ' https://s.id/')
+            if 'forms.gle/' in desc:
+                desc = desc.replace('forms.gle/', ' https://forms.gle/')
+            if 'https://' in desc:
+                webhook.set_content("<@&"+Role_ID+">")
+            embed.set_description(desc)
+
+        webhook.add_embed(embed) # add embed to webhook
+        number_of_embed += 1
+        if number_of_embed == 5: # if embed maxed (5), then post the webhook
+            webhook.execute()
+            webhook = DiscordWebhook(url=webhook_url, username=get_user_fullname(html), avatar_url=get_profile_picture(html))
+            number_of_embed = 0
+            time.sleep(1) # to prevent Discord webhook rate limiting
+
+    if number_of_embed != 0: # if theres some data that isnt posted yet, then post
+        webhook.execute()
+
+# i decided to use DiscordWebhook library
+# def webhookRewrite2(webhook_url, html): 
+#     data = {
+#         # "content" : "https://instagram.com/p/+get_last_publication_url(html)",
+#         "username" : get_user_fullname(html),
+#         "avatar_url" : get_profile_picture(html)
+#     }
+#     data["embeds"] = []
+#     embed = {}
+#     index = 0
+#     nodes = html.json()["graphql"]["user"]["edge_owner_to_timeline_media"]["edges"]
+#     for node in nodes: # check from bottom
+#         embed["color"] = 13500529
+#         embed["title"] = "New Post from @" + INSTAGRAM_USERNAME
+#         embed["url"]   = "https://www.instagram.com/p/" + node["node"]["shortcode"] + "/"
+#         if node["node"]["edge_media_to_caption"]["edges"]:
+#             embed["description"] = node["node"]["edge_media_to_caption"]["edges"][0]["node"]["text"]
+#         else:
+#             embed["description"] = ""
+#         embed["image"] = {"url":node["node"]["thumbnail_src"]}
+#         data["embeds"].append(embed)
+#         if (index + 1) % 5 == 0:
+#             result = requests.post(webhook_url, json=data)
+#             data["embeds"] = []
+#             embed = {}
+#             try:
+#                 result.raise_for_status()
+#             except requests.exceptions.HTTPError as err:
+#                 print(err)
+#             else:
+#                 print("Image successfully posted in Discord, code {}.".format(
+#                     result.status_code))
+#         if node["node"]["shortcode"] == os.environ["LAST_IMAGE_ID"] and index != 0: # if looped until last image, check embed then post
+#             if (index + 1) % 5 != 0:
+#                 result = requests.post(webhook_url, json=data)
+#                 try:
+#                     result.raise_for_status()
+#                 except requests.exceptions.HTTPError as err:
+#                     print(err)
+#                 else:
+#                     print("Image successfully posted in Discord, code {}.".format(
+#                         result.status_code))
+#             break
+#         index += 1
 
 def get_instagram_html(INSTAGRAM_USERNAME):
     headers = {
@@ -119,10 +201,11 @@ def main():
         if(os.environ.get("LAST_IMAGE_ID") == get_last_publication_url(html)):
             print("No new image to post in discord.")
         else:
-            os.environ["LAST_IMAGE_ID"] = get_last_publication_url(html)
             print("New image to post in discord.")
-            webhook(os.environ.get("WEBHOOK_URL"),
+            webhookRewrite(os.environ.get("WEBHOOK_URL"),
                     html) # just 1x request
+            os.environ["LAST_IMAGE_ID"] = get_last_publication_url(html)
+            dotenv.set_key(dotenv_file, "LAST_IMAGE_ID", os.environ["LAST_IMAGE_ID"]) # save to .env
     except Exception as e:
         print(e)
 
