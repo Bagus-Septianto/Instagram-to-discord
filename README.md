@@ -9,7 +9,7 @@ This script executes 2 actions:
 ## Requirements:
 
 - Python v3
-- Python module re, json, requests
+- Python module re, json, requests, dotenv, python-discord-webhook
 
 ## Usage:
 
