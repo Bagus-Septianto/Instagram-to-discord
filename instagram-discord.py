@@ -12,12 +12,15 @@
 
 # REQUIREMENTS:
 # - Python v3
-# - Python module re, json, requests
+# - Python module re, json, requests, discord-webhook
 import re
 import json
 import sys
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 import urllib.request
+import getpass
 import os
 import time
 import random
@@ -36,6 +39,8 @@ dotenv.load_dotenv(dotenv_file, override=True)
 
 INSTAGRAM_USERNAME = os.environ.get('IG_USERNAME')
 
+print(f"{getpass.getuser()} is executing instagram-discord.py at {time.ctime()}")
+
 USER_AGENT = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36",
@@ -44,7 +49,16 @@ USER_AGENT = [
     "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Win64; x64; Trident/5.0)",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.2 Safari/605.1.15",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36 OPR/78.0.4093.112",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_5_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36 OPR/78.0.4093.112",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36 OPR/78.0.4093.112",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36 Edg/92.0.902.73",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 11.5; rv:91.0) Gecko/20100101 Firefox/91.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36"
 ]
 
 # ----------------------- Do not modify under this line ----------------------- #
@@ -119,14 +133,6 @@ def webhookRewrite(webhook_url, html):
         # embed.set_thumbnail(url=node["node"]["thumbnail_src"]) # uncomment to add smaller image
         if node["node"]["edge_media_to_caption"]["edges"]:
             desc = node["node"]["edge_media_to_caption"]["edges"][0]["node"]["text"]
-            if 'bit.ly/' in desc:
-                desc = desc.replace('bit.ly/', ' https://bit.ly/')
-            if 's.id/' in desc:
-                desc = desc.replace('s.id/', ' https://s.id/')
-            if 'forms.gle/' in desc:
-                desc = desc.replace('forms.gle/', ' https://forms.gle/')
-            if 'https://' in desc:
-                webhook.set_content("<@&"+Role_ID+">")
             embed.set_description(desc)
 
         webhook.add_embed(embed) # add embed to webhook
@@ -140,75 +146,75 @@ def webhookRewrite(webhook_url, html):
     if number_of_embed != 0: # if theres some data that isnt posted yet, then post
         webhook.execute()
 
-# i decided to use DiscordWebhook library
-# def webhookRewrite2(webhook_url, html): 
-#     data = {
-#         # "content" : "https://instagram.com/p/+get_last_publication_url(html)",
-#         "username" : get_user_fullname(html),
-#         "avatar_url" : get_profile_picture(html)
-#     }
-#     data["embeds"] = []
-#     embed = {}
-#     index = 0
-#     nodes = html.json()["graphql"]["user"]["edge_owner_to_timeline_media"]["edges"]
-#     for node in nodes: # check from bottom
-#         embed["color"] = 13500529
-#         embed["title"] = "New Post from @" + INSTAGRAM_USERNAME
-#         embed["url"]   = "https://www.instagram.com/p/" + node["node"]["shortcode"] + "/"
-#         if node["node"]["edge_media_to_caption"]["edges"]:
-#             embed["description"] = node["node"]["edge_media_to_caption"]["edges"][0]["node"]["text"]
-#         else:
-#             embed["description"] = ""
-#         embed["image"] = {"url":node["node"]["thumbnail_src"]}
-#         data["embeds"].append(embed)
-#         if (index + 1) % 5 == 0:
-#             result = requests.post(webhook_url, json=data)
-#             data["embeds"] = []
-#             embed = {}
-#             try:
-#                 result.raise_for_status()
-#             except requests.exceptions.HTTPError as err:
-#                 print(err)
-#             else:
-#                 print("Image successfully posted in Discord, code {}.".format(
-#                     result.status_code))
-#         if node["node"]["shortcode"] == os.environ["LAST_IMAGE_ID"] and index != 0: # if looped until last image, check embed then post
-#             if (index + 1) % 5 != 0:
-#                 result = requests.post(webhook_url, json=data)
-#                 try:
-#                     result.raise_for_status()
-#                 except requests.exceptions.HTTPError as err:
-#                     print(err)
-#                 else:
-#                     print("Image successfully posted in Discord, code {}.".format(
-#                         result.status_code))
-#             break
-#         index += 1
+def webhookRewrite2(webhook_url, html, db):
+    webhook = DiscordWebhook(url=webhook_url, username=get_user_fullname(html), avatar_url=get_profile_picture(html))
+    number_of_embed = 0
+    nodes = html.json()["graphql"]["user"]["edge_owner_to_timeline_media"]["edges"]
+    for node in reversed(nodes): # check from bottom
+        if node["node"]["shortcode"] not in db: # if looped until last image, check embed then post
+            print("posting https://instagram.com/p/"+node["node"]["shortcode"]+"/")
+            embed = DiscordEmbed(title="New Post from @" + INSTAGRAM_USERNAME, 
+                                url="https://www.instagram.com/p/" + node["node"]["shortcode"] + "/", 
+                                color="CE0071")
+            embed.set_image(url=node["node"]["thumbnail_src"]) # uncomment to post bigger image
+            # embed.set_thumbnail(url=node["node"]["thumbnail_src"]) # uncomment to add smaller image
+            if node["node"]["edge_media_to_caption"]["edges"]:
+                desc = node["node"]["edge_media_to_caption"]["edges"][0]["node"]["text"]
+                embed.set_description(desc)
+
+            db.append(node["node"]["shortcode"])
+            webhook.add_embed(embed) # add embed to webhook
+            number_of_embed += 1
+            if number_of_embed == 5: # if embed maxed (5), then post the webhook
+                webhook.execute()
+                webhook = DiscordWebhook(url=webhook_url, username=get_user_fullname(html), avatar_url=get_profile_picture(html))
+                number_of_embed = 0
+                time.sleep(1) # to prevent Discord webhook rate limiting
+
+    if number_of_embed != 0: # if theres some data that isnt posted yet, then post
+        webhook.execute()
+    
+    with open(os.path.join(os.path.dirname(__file__), 'db.json'), 'w') as outfile:
+        json.dump(db[-50:], outfile) #file created at ~/
+
+def webhookPostError(webhook_url, msg="no message"):
+    print('error', str(msg))
+    webhook = DiscordWebhook(url=webhook_url, rate_limit_retry=True)
+    embed = DiscordEmbed(title="Error Occured", color="FF0000")
+    webhook.set_content("<@&" + os.environ.get("ROLE_ID", "no role") + "> " + str(msg))
+    webhook.add_embed(embed)
+    webhook.execute()
 
 def get_instagram_html(INSTAGRAM_USERNAME):
+    session = requests.Session()
+    retry = Retry(connect=4, backoff_factor=1)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
     headers = {
         "Host": "www.instagram.com",
         "User-Agent": random.choice(USER_AGENT)
     }
-    html = requests.get("https://www.instagram.com/" +
+    html = session.get("https://www.instagram.com/" +
                         INSTAGRAM_USERNAME + "/feed/?__a=1", headers=headers)
     return html
 
 
 def main():
     try:
+        with open(os.path.join(os.path.dirname(__file__), 'db.json')) as json_file:
+            db = json.load(json_file) #search file at ~/
+    except FileNotFoundError:
+        db = []
+    try:
         html = get_instagram_html(INSTAGRAM_USERNAME)
-        if(os.environ.get("LAST_IMAGE_ID") == get_last_publication_url(html)):
-            print("No new image to post in discord.")
+        if "graphql" in html.json():
+            webhookRewrite2(os.environ.get("WEBHOOK_URL"), html, db)
         else:
-            print("New image to post in discord.")
-            webhookRewrite(os.environ.get("WEBHOOK_URL"),
-                    html) # just 1x request
-            os.environ["LAST_IMAGE_ID"] = get_last_publication_url(html)
-            dotenv.set_key(dotenv_file, "LAST_IMAGE_ID", os.environ["LAST_IMAGE_ID"]) # save to .env
+            webhookPostError(os.environ.get("WEBHOOK_URL"), "No GraphQL")
     except Exception as e:
         print(e)
-
+        webhookPostError(os.environ.get("WEBHOOK_URL"), e)
 
 if __name__ == "__main__":
     if os.environ.get('IG_USERNAME') != None and os.environ.get('WEBHOOK_URL') != None:
